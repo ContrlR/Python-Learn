@@ -8,10 +8,10 @@ from string import ascii_lowercase, ascii_uppercase, digits
 
 class Remote:
     def __init__(self):
-        self.client_socket = socket.socket()
-        self.max_attempts = 1000000    
+        self.client_socket = socket.socket()   
         self.buffer = 1024
         self.attempts = 0
+        self.max_attempts = 1000000 
         self.lag = 0
         self.max_lag = 0.1
         self.msg = ''
